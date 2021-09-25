@@ -1,6 +1,10 @@
 #!/bin/bash
 
 #Переменные
+#Полный путь до скрипта
+path_to_scpript='/path/to/script'
+#Запись в кроне
+cron_string=$(crontab -l | grep $path_to_scpript ; echo $?)
 #Путь до директории с логами. Нужно указать свой путь до директории, в которой будут создаваться новые файлы с сообщениями
 path_to_log_dir='/path/to/dir'
 #Первая временная метка из лог файла
@@ -18,7 +22,7 @@ all_ip_addresses=$(cat access.log| awk '{print $1}')
 #Все адреса, к которым были обращения в лог файле
 all_addresses=$(cat access.log | awk '{print $11}' | sed 's/"-"//g' | sed 's/uct=//g' | sed '/^[[:space:]]*$/d')
 #Все ошибки из лог файла с указанием IP адреса, с которого был сделан запрос
-all_errors=$(cat access.log| grep error | awk '{ print "From address " $1, "at time ", $4 " error code - " $7}')
+all_errors=$(cat access.log | grep error | awk '{ print "From address " $1, "at time ", $4 " error code - " $7}')
 #Все коды запросов из лог файла
 list_with_all_responce_code=$(cat access.log | awk '{print $9}' | sed 's/"-"//g' |sed '/^[[:space:]]*$/d')
 
@@ -69,6 +73,24 @@ create_message(){
 	collected_responce_code >> $full_path_to_new_file  
 }
 create_message
+
 #Отправка письма. Вместо your_user необходимо указать пользователя, которому будут доставлятся сообщения
 cat $full_path_to_new_file | mail -s "NGINX Log Info" your_user@localhost 
+
+#Создание записи в кроне с защитой от мультизапуска. Если запись уже существует, то создаваться повторно не будет. Так же происходит установка lockrun, если ее нет на хосте
+install_lockrun(){
+	wget unixwiz.net/tools/lockrun.c && sleep 5 && gcc lockrun.c -o lockrun && mv lockrun /usr/local/bin/
+}
+create_cron(){
+	crontab -l | { cat; echo "@hourly /usr/local/bin/lockrun --maxtime=9 --lockfile=$path_to_scpript"; } | crontab - && install_lockrun
+}
+
+if [[ "$cron_string" =~ [1] ]]; then
+	create_cron
+else
+exit 0
+fi
+
+
+
 
